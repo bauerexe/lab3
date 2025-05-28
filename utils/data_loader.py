@@ -1,93 +1,90 @@
-# utils/data_loader.py
+"""
+Универсальный загрузчик табличных наборов данных с https://archive.ics.uci.edu/
+
+Поддерживает:
+- одиночные файлы .csv, .data, .xls(x)
+- .zip-архивы, внутри которых лежит один табличный файл
+Возвращает (X, y, feature_names), где
+  X — numpy-матрица признаков,
+  y — целевой вектор,
+  feature_names — список имён столбцов (str) в X.
+"""
 from __future__ import annotations
-import io
-import zipfile
-from pathlib import Path
-from typing import Tuple
 
-import numpy as np
-import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-import urllib.request
+import csv
+import io, zipfile, tempfile, pathlib, requests, pandas as pd, numpy as np
 
-# URL & локальные пути ---------------------------------------------------------
-URL = (
-    "https://archive.ics.uci.edu/ml/machine-learning-databases/"
-    "00294/CCPP.zip"
-)
+__all__ = ["load_uci"]
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-ZIP_PATH = DATA_DIR / "ccpp.zip"
-EXCEL_NAME = "CCPP/Folds5x2_pp.xlsx"
+ROOT = "https://archive.ics.uci.edu/ml/machine-learning-databases"
 
+def _download(dataset: str, file: str | None) -> bytes:
+    url = f"{ROOT}/{dataset}/{file or ''}".rstrip("/")
+    resp = requests.get(url, timeout=30)
+    resp.raise_for_status()
+    return resp.content
 
-# ---------------------------- служебные функции ------------------------------
-def _download_if_needed(url: str = URL, dst: Path = ZIP_PATH) -> None:
-    if dst.exists() and dst.stat().st_size > 1_000:
-        return                       # уже скачан и похоже на zip
-    print(f"Downloading {url} → {dst} …")
-    try:
-        with urllib.request.urlopen(url) as resp, open(dst, "wb") as f_out:
-            f_out.write(resp.read())
-    except urllib.error.URLError as e:
-        raise RuntimeError(f"❌ download failed: {e}") from e
-    if dst.stat().st_size < 1_000:
-        raise RuntimeError("❌ downloaded file is too small – looks like an error page.")
-    print("✓ download complete")
+def _open_zip(buf: bytes) -> pd.DataFrame:
+    with zipfile.ZipFile(io.BytesIO(buf)) as zf:
+        member = next((m for m in zf.namelist()
+                       if m.endswith((".csv", ".data", ".xls", ".xlsx"))), None)
+        if member is None:
+            raise ValueError("Не нашёл табличных файлов в архиве")
+        return _read_table(zf.read(member), pathlib.Path(member).suffix)
 
-
-def _extract_excel(zip_path: Path = ZIP_PATH,
-                   member: str = EXCEL_NAME) -> io.BytesIO:
-    with zipfile.ZipFile(zip_path) as zf:
-        if member not in zf.namelist():
-            raise RuntimeError(f"❌ {member} not found in archive. "
-                               "Check the namelist: " + str(zf.namelist()[:10]))
-        with zf.open(member) as excel_file:
-            return io.BytesIO(excel_file.read())
-
-
-# ------------------------------ публичный API --------------------------------
-def load_ccpp(
-    test_size: float = 0.2,
-    scale: bool = True,
-    random_state: int | None = 42
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def _read_table(buf: bytes, suffix: str, *, header="infer") -> pd.DataFrame:
     """
-    Загружает Combined Cycle Power Plant dataset и возвращает
-    (X_train, X_test, y_train, y_test).
-
-    Parameters
-    ----------
-    test_size : float
-        Доля объектов в тестовой выборке.
-    scale : bool
-        Если True — стандартизирует признаки и цель с помощью StandardScaler.
-    random_state : int | None
-        Число для воспроизводимости train_test_split.
+    Считывает табличный файл в pandas.DataFrame.
+    - для .csv /.data  ➜ автоматический выбор разделителя
+    - для .xls /.xlsx  ➜ через read_excel
     """
-    # 1. загрузка / распаковка -------------------------------------------------
-    _download_if_needed()
-    excel_bytes = _extract_excel()
+    if suffix in (".csv", ".data"):
+        sample = buf[:2048].decode("utf-8", errors="ignore")
+        # пытаемся угадать разделитель: ',', ';', '\t', '|'
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters=[",", ";", "\t", "|"])
+            sep = dialect.delimiter
+        except csv.Error:
+            sep = ","  # fallback
+        return pd.read_csv(io.BytesIO(buf), sep=sep, header=header, na_filter=True)
 
-    df = pd.read_excel(excel_bytes)
+    if suffix in (".xls", ".xlsx"):
+        return pd.read_excel(io.BytesIO(buf), header=header, engine="openpyxl")
 
-    # 2. разделение признаков и цели ------------------------------------------
-    X = df.drop("PE", axis=1).values.astype(np.float32)   # (T, V, AP, RH)
-    y = df["PE"].values.reshape(-1, 1).astype(np.float32)
+    raise ValueError(f"Не умею читать файлы с расширением {suffix}")
 
-    # 3. train / test split ----------------------------------------------------
-    X_tr, X_te, y_tr, y_te = train_test_split(
-        X, y, test_size=test_size, random_state=random_state
-    )
 
-    # 4. стандартизация --------------------------------------------------------
-    if scale:
-        x_scaler, y_scaler = StandardScaler(), StandardScaler()
-        X_tr = x_scaler.fit_transform(X_tr)
-        X_te = x_scaler.transform(X_te)
-        y_tr = y_scaler.fit_transform(y_tr)
-        y_te = y_scaler.transform(y_te)
+def _to_xy(df: pd.DataFrame, target: str | int):
+    if isinstance(target, int):
+        y = df.iloc[:, target].values
+        X = df.drop(df.columns[target], axis=1).values
+        feat_names = df.drop(df.columns[target], axis=1).columns.to_list()
+    else:
+        y = df[target].values
+        X = df.drop(target, axis=1).values
+        feat_names = df.drop(target, axis=1).columns.to_list()
+    return X, y, feat_names
 
-    return X_tr, X_te, y_tr, y_te
+def load_uci(dataset: str, file: str | None = None, *,
+             target: str | int,
+             cache_dir: str | pathlib.Path | None = "~/.ucicache"):
+    """Скачивает <dataset>/<file> с UCI, выделяет целевой столбец ``target``."""
+    cache_dir = pathlib.Path(cache_dir).expanduser() if cache_dir else None
+    fname     = (file or dataset.split("/")[-1])
+    if cache_dir:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        path = cache_dir / fname
+        if not path.exists():
+            path.write_bytes(_download(dataset, file))
+        buf = path.read_bytes()
+    else:
+        buf = _download(dataset, file)
+
+    # --- распаковка / чтение ---
+    if fname.endswith(".zip"):
+        df = _open_zip(buf)
+    else:
+        df = _read_table(buf, pathlib.Path(fname).suffix)
+
+    print(f"[DataLoader] shape={df.shape}")
+    return _to_xy(df, target)
