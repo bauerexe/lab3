@@ -1,18 +1,9 @@
 """
-Универсальный загрузчик табличных наборов данных с https://archive.ics.uci.edu/
-
-Поддерживает:
-- одиночные файлы .csv, .data, .xls(x)
-- .zip-архивы, внутри которых лежит один табличный файл
-Возвращает (X, y, feature_names), где
-  X — numpy-матрица признаков,
-  y — целевой вектор,
-  feature_names — список имён столбцов (str) в X.
+utils/data_loader.py
 """
-from __future__ import annotations
 
 import csv
-import io, zipfile, tempfile, pathlib, requests, pandas as pd, numpy as np
+import io, zipfile, pathlib, requests, pandas as pd
 
 __all__ = ["load_uci"]
 
@@ -40,7 +31,6 @@ def _read_table(buf: bytes, suffix: str, *, header="infer") -> pd.DataFrame:
     """
     if suffix in (".csv", ".data"):
         sample = buf[:2048].decode("utf-8", errors="ignore")
-        # пытаемся угадать разделитель: ',', ';', '\t', '|'
         try:
             dialect = csv.Sniffer().sniff(sample, delimiters=[",", ";", "\t", "|"])
             sep = dialect.delimiter
@@ -80,7 +70,6 @@ def load_uci(dataset: str, file: str | None = None, *,
     else:
         buf = _download(dataset, file)
 
-    # --- распаковка / чтение ---
     if fname.endswith(".zip"):
         df = _open_zip(buf)
     else:

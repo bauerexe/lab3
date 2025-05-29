@@ -1,46 +1,21 @@
 """
 core/sgd.py
-~~~~~~~~~~~
-
-Маленькая, но гибкая реализация регрессии, обучаемой SGD-семейством.
-Поддерживает:
-
-* Любой объект-оптимизатор с методом .update()
-* Любой scheduler  lr = f(step)
-* L1 / L2 / Elastic Net
-* Клиппинг градиента
-* Инициализацию весов (zeros / xavier / he)
-
 """
 
-from __future__ import annotations
-
 from typing import Callable
-
 import numpy as np
-
-from core.optimizers import (
-    BaseOpt, SGD, Momentum, Nesterov, AdaGrad, AdaDelta, RMSProp, Adam
-)
 
 __all__ = [
     "SGDRegressor",
-    "SGD",
-    "Momentum",
-    "Nesterov",
-    "AdaGrad",
-    "AdaDelta",
-    "RMSProp",
-    "Adam",
 ]
 
+from core.sgd_variants import BaseOpt
 
-# core/sgd.py  (замените существующий класс SGDRegressor)
 
 class SGDRegressor:
     """
     Модель линейной/полиномиальной регрессии, обучаемая
-    стохастическим градиентом или любым оптимизатором из core.optimizers.
+    стохастическим градиентом или любым оптимизатором из core.sgd_variants
     """
 
     def __init__(
@@ -73,8 +48,6 @@ class SGDRegressor:
         self.init = init
         self.rng = np.random.default_rng(random_state)
 
-    # ───────── вспомогательное ──────────────────────────────────────────── #
-
     def _add_intercept(self, X):
         return np.c_[np.ones(X.shape[0]), X] if self.fit_intercept else X
 
@@ -94,7 +67,7 @@ class SGDRegressor:
             return 0.0
         w_use = w.copy()
         if self.fit_intercept:
-            w_use[0] = 0.0          # bias не штрафуем
+            w_use[0] = 0.0
         if self.penalty == "l1":
             return self.alpha * np.sign(w_use)
         if self.penalty == "l2":
@@ -104,8 +77,6 @@ class SGDRegressor:
                 self.l1_ratio * np.sign(w_use) + (1 - self.l1_ratio) * w_use
             )
         raise ValueError(f"Unknown penalty {self.penalty}")
-
-    # ───────── основное обучение ────────────────────────────────────────── #
 
     def fit(self, X, y):
         X = self._add_intercept(np.asarray(X, float))
@@ -122,7 +93,6 @@ class SGDRegressor:
             grad = 2 * Xb.T @ (Xb @ self.w_ - yb) / self.bs
             grad += self._reg_grad(self.w_)
 
-            # gradient clipping
             if self.clip_norm is not None:
                 g_norm = np.linalg.norm(grad)
                 if g_norm > self.clip_norm:
