@@ -1,14 +1,17 @@
-# core/schedulers.py
 """
-Learning-rate schedulers compatible with our GradientDescent / SGD classes.
+core/schedulers.py
+~~~~~~~~~~~~~~~~~~
+Learning-rate schedulers compatible with GradientDescent / SGD classes.
+Каждый объект вызывается как lr = scheduler(k), где k — номер шага.
+"""
 
-Каждый объект вызывается как функция lr = scheduler(k),
-где k — номер совершённого шага (не эпохи).
-"""
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import math
 
+# --------------------------------------------------------------------------- #
+#                               Базовый класс                                 #
+# --------------------------------------------------------------------------- #
 
 class BaseScheduler(ABC):
     """Абстрактный класс: реализует __call__(k) и reset()."""
@@ -24,12 +27,14 @@ class BaseScheduler(ABC):
         """Позволяет начать отсчёт шагов заново (если нужно)."""
         pass
 
-    # удобство — выводим текущее начальное lr
     def __repr__(self) -> str:
         return f"{self.name}(lr0={self.lr0})"
 
 
 # --------------------------------------------------------------------------- #
+#                         Конкретные расписания                               #
+# --------------------------------------------------------------------------- #
+
 class ConstantScheduler(BaseScheduler):
     """f(k) = lr0"""
 
@@ -51,7 +56,7 @@ class ExponentialDecayScheduler(BaseScheduler):
         return self.lr0 * math.exp(-self.lam * k)
 
 
-class PolynomialDecayScheduler(BaseScheduler):
+class PolynomialDecay(BaseScheduler):
     """f(k) = lr0 / (β·k + 1)^α"""
 
     def __init__(self, lr0: float, alpha: float = .5, beta: float = 1.0):
@@ -75,23 +80,47 @@ class StepDecayScheduler(BaseScheduler):
 
 class CosineAnnealingScheduler(BaseScheduler):
     """
-    f(k) = lr_min + 0.5·(lr0 - lr_min)·(1 + cos(π·k / T))
-    После T шагов цикл повторяется (если T_restart задан).
+    f(k) = lr_min + 0.5·(lr0 − lr_min)·(1 + cos(π·t / L))
+
+    * первый цикл длиной T
+    * все последующие — T_restart (если задан)
     """
 
-    def __init__(
-        self,
-        lr0: float,
-        T: int = 10_000,
-        lr_min: float = 0.0,
-        T_restart: int | None = None,
-    ):
+    def __init__(self, lr0: float, T: int = 10_000,
+                 lr_min: float = 0.0, T_restart: int | None = None):
         super().__init__(lr0, name="CosineAnnealing")
-        self.T = T
+        self.T0 = T
         self.lr_min = lr_min
-        self.T_restart = T_restart or T
+        self.T_restart = T_restart
+        self._cycle_len = T
+        self._t = 0
 
     def __call__(self, k: int) -> float:
-        k_mod = k % self.T_restart
-        cos_inner = math.pi * (k_mod / self.T)
-        return self.lr_min + 0.5 * (self.lr0 - self.lr_min) * (1.0 + math.cos(cos_inner))
+        if self._t >= self._cycle_len:
+            self._t = 0
+            if self.T_restart is not None:
+                self._cycle_len = self.T_restart
+
+        lr = self.lr_min + 0.5 * (self.lr0 - self.lr_min) * (
+            1 + math.cos(math.pi * self._t / self._cycle_len)
+        )
+        self._t += 1
+        return lr
+
+    def reset(self):
+        self._cycle_len = self.T0
+        self._t = 0
+
+
+# --------------------------------------------------------------------------- #
+#                        Что экспортировать из модуля                         #
+# --------------------------------------------------------------------------- #
+
+__all__ = [
+    "BaseScheduler",
+    "ConstantScheduler",
+    "ExponentialDecayScheduler",
+    "PolynomialDecay",
+    "StepDecayScheduler",
+    "CosineAnnealingScheduler",
+]
