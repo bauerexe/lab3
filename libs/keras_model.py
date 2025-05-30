@@ -1,8 +1,12 @@
+import os
+import sys
+
 import tensorflow as tf
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import numpy as np
 
-def tensorflow_manual_train(X_train, X_test, y_train, y_test, optimize, epochs=500, batch_size=64):
+
+def tensorflow_manual_train(X_train, X_test, y_train, y_test, optimize, lr : float = 0.1, epochs=500, batch_size=64):
     # Конвертация в тензоры
     X_train = tf.convert_to_tensor(X_train, dtype=tf.float32)
     y_train = tf.convert_to_tensor(y_train.reshape(-1, 1), dtype=tf.float32)
@@ -15,12 +19,12 @@ def tensorflow_manual_train(X_train, X_test, y_train, y_test, optimize, epochs=5
 
     # Оптимизаторы
     optimizer_options = {
-        'SGD': tf.keras.optimizers.SGD(learning_rate=0.1),
-        'Momentum': tf.keras.optimizers.SGD(learning_rate=0.01, momentum=0.9),
-        'Nesterov': tf.keras.optimizers.SGD(learning_rate=0.01, momentum=0.9, nesterov=True),
-        'AdaGrad': tf.keras.optimizers.Adagrad(learning_rate=0.01),
-        'RMSProp': tf.keras.optimizers.RMSprop(learning_rate=0.01),
-        'Adam': tf.keras.optimizers.Adam(learning_rate=0.01),
+        'SGD': tf.keras.optimizers.SGD(learning_rate=lr),
+        'Momentum': tf.keras.optimizers.SGD(learning_rate=lr, momentum=0.9),
+        'Nesterov': tf.keras.optimizers.SGD(learning_rate=lr, momentum=0.9, nesterov=True),
+        'AdaGrad': tf.keras.optimizers.Adagrad(learning_rate=lr),
+        'RMSProp': tf.keras.optimizers.RMSprop(learning_rate=lr),
+        'Adam': tf.keras.optimizers.Adam(learning_rate=lr),
     }
     optimizer = optimizer_options[optimize]
 

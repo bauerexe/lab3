@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 
-def pytorch_model(X_train, X_test, y_train, y_test, optimize: str = "SGD", epochs: int = 4000, batch_size: int = 64):
+def pytorch_model(X_train, X_test, y_train, y_test, optimize: str = "SGD", lr : float = 0.1, epochs: int = 4000):
     # конвертируем данные в тензоры
     X_train_torch = torch.tensor(X_train, dtype=torch.float32)
     y_train_torch = torch.tensor(y_train, dtype=torch.float32).view(-1, 1)
@@ -16,12 +16,12 @@ def pytorch_model(X_train, X_test, y_train, y_test, optimize: str = "SGD", epoch
 
     # оптимизаторы
     optimizers = {
-        'SGD': optim.SGD(model.parameters(), lr=0.005),
-        'Momentum': optim.SGD(model.parameters(), lr=0.01, momentum=0.9),
-        'Nesterov': optim.SGD(model.parameters(), lr=0.01, momentum=0.9, nesterov=True),
-        'AdaGrad': optim.Adagrad(model.parameters(), lr=0.9999991),
-        'RMSProp': optim.RMSprop(model.parameters(), lr=0.1),
-        'Adam': optim.Adam(model.parameters(), lr=0.001),
+        'SGD': optim.SGD(model.parameters(), lr=lr),
+        'Momentum': optim.SGD(model.parameters(), lr=lr, momentum=0.9),
+        'Nesterov': optim.SGD(model.parameters(), lr=lr, momentum=0.9, nesterov=True),
+        'AdaGrad': optim.Adagrad(model.parameters(), lr=lr),
+        'RMSProp': optim.RMSprop(model.parameters(), lr=lr),
+        'Adam': optim.Adam(model.parameters(), lr=lr),
     }
 
     criterion = nn.MSELoss()
@@ -31,17 +31,11 @@ def pytorch_model(X_train, X_test, y_train, y_test, optimize: str = "SGD", epoch
 
     # обучение по mini-batch
     for epoch in range(epochs):
-        permutation = torch.randperm(n_samples)
-        for i in range(0, n_samples, batch_size):
-            indices = permutation[i:i+batch_size]
-            X_batch = X_train_torch[indices]
-            y_batch = y_train_torch[indices]
-
-            optimizer.zero_grad()
-            outputs = model(X_batch)
-            loss = criterion(outputs, y_batch)
-            loss.backward()
-            optimizer.step()
+        optimizer.zero_grad()
+        outputs = model(X_train_torch)
+        loss = criterion(outputs, y_train_torch)
+        loss.backward()
+        optimizer.step()
 
     # включаем режим оценки
     model.eval()
