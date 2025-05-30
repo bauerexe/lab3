@@ -30,7 +30,7 @@ class SGDRegressor:
     :param l1_ratio: float
         Доля L1 в Elastic-Net (только если penalty="elastic").
     :param max_iter: int
-        Число шагов (итераций SGD).
+        Число **эпох** (полных проходов по датасету).
     :param fit_intercept: bool
         Добавлять ли свободный член (intercept) в модель.
     :param clip_norm: float | None
@@ -63,7 +63,7 @@ class SGDRegressor:
         self.penalty = penalty
         self.alpha = alpha
         self.l1_ratio = l1_ratio
-        self.max_iter = max_iter
+        self.max_iter = max_iter  # число эпох
         self.fit_intercept = fit_intercept
         self.clip_norm = clip_norm
         self.init = init
@@ -110,16 +110,10 @@ class SGDRegressor:
         if self.fit_intercept:
             w_corr[0] = 0.0
         if self.penalty == "l1":
-            """‖w‖₁"""
-            return self.alpha * np.sign(w_corr)
+            return self.alpha * np.sign(w_corr)      # ‖w‖₁
         if self.penalty == "l2":
-            """‖w‖₂²"""
-            return self.alpha * w_corr
+            return self.alpha * w_corr               # ‖w‖₂²
         if self.penalty == "elastic":
-            """
-            α · ‖w‖₂²  +  β · ‖w‖₁
-            grad(w, α, β)
-            """
             return self.alpha * (
                 self.l1_ratio * np.sign(w_corr) + (1 - self.l1_ratio) * w_corr
             )
@@ -127,7 +121,7 @@ class SGDRegressor:
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> "SGDRegressor":
         """
-        Обучает модель методом SGD или внешним optimizer.
+        Обучает модель методом SGD или внешним optimizer по эпохам.
 
         :param X: np.ndarray, форма (n_samples, n_features) — матрица признаков.
         :param y: np.ndarray, форма (n_samples,) — вектор целей.
@@ -140,23 +134,29 @@ class SGDRegressor:
         if self.optimizer is not None:
             self.optimizer.reset()
 
-        for k in range(self.max_iter):
-            idx = self.rng.choice(len(X_mat), self.bs, replace=False)
-            Xb, yb = X_mat[idx], y_vec[idx]
+        n_samples = X_mat.shape[0]
+        steps_per_epoch = int(np.ceil(n_samples / self.bs))
+        k = 0
+        for epoch in range(self.max_iter):
+            for _ in range(steps_per_epoch):
+                idx = self.rng.choice(n_samples, self.bs, replace=False)
+                Xb, yb = X_mat[idx], y_vec[idx]
 
-            grad = 2.0 * Xb.T @ (Xb @ self.w_ - yb) / self.bs
-            grad += self._reg_grad(self.w_)
+                grad = 2.0 * Xb.T @ (Xb @ self.w_ - yb) / self.bs
+                grad += self._reg_grad(self.w_)
 
-            if self.clip_norm is not None:
-                norm = np.linalg.norm(grad)
-                if norm > self.clip_norm:
-                    grad *= (self.clip_norm / norm)
+                if self.clip_norm is not None:
+                    norm = np.linalg.norm(grad)
+                    if norm > self.clip_norm:
+                        grad *= (self.clip_norm / norm)
 
-            if self.optimizer is not None:
-                self.w_ = self.optimizer.update(self.w_, grad, k)
-            else:
-                lr = self.lr_schedule(k)
-                self.w_ -= lr * grad
+                if self.optimizer is not None:
+                    self.w_ = self.optimizer.update(self.w_, grad, k)
+                else:
+                    lr = self.lr_schedule(k)
+                    self.w_ -= lr * grad
+
+                k += 1
 
         return self
 
