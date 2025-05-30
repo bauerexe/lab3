@@ -44,7 +44,6 @@ class SGDRegressor:
     def __init__(
         self,
         lr_schedule: Optional[Callable[[int], float]] = None,
-        *,
         optimizer: Optional[BaseOpt] = None,
         batch_size: int = 32,
         penalty: Optional[str] = None,
@@ -111,10 +110,16 @@ class SGDRegressor:
         if self.fit_intercept:
             w_corr[0] = 0.0
         if self.penalty == "l1":
+            """‖w‖₁"""
             return self.alpha * np.sign(w_corr)
         if self.penalty == "l2":
+            """‖w‖₂²"""
             return self.alpha * w_corr
         if self.penalty == "elastic":
+            """
+            α · ‖w‖₂²  +  β · ‖w‖₁
+            grad(w, α, β)
+            """
             return self.alpha * (
                 self.l1_ratio * np.sign(w_corr) + (1 - self.l1_ratio) * w_corr
             )
