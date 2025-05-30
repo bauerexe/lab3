@@ -63,4 +63,9 @@ def tensorflow_manual_train(X_train, X_test, y_train, y_test, optimize, epochs=5
 
     print(f'{optimize}: MSE = {mse:.4f}, MAE = {mae:.4f}, R² = {r2:.4f}')
 
-    return model
+    def predictor(X_input):
+        X_input_tf = tf.convert_to_tensor(X_input, dtype=tf.float32)
+        y_pred = model(X_input_tf, training=False).numpy()
+        return y_pred.squeeze()
+
+    return predictor
