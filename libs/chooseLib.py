@@ -1,24 +1,15 @@
 import torch
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from tensorflow.python.ops.gen_lookup_ops import InitializeTable
+
 from utils.data_loader import load_uci
 
 from libs.pytorch_model import pytorch_model
 from libs.keras_model import *
 
-def choose_scaler(model: str, x_train):
-    def torchh(sample):
-        return torch.tensor(sample, dtype=torch.float32)
-    def keras(sample):
-        scaler = StandardScaler().fit(x_train)
-        return scaler.transform(sample)
-    if model == "torch":
-        return torchh
-    elif model == "tensorflow":
-        return keras
 
-
-def choose_model(target : str = "" , model: str = 'torch', optimize: str = 'SGD'):
+def choose_model(target : str = "quality" , model: str = 'torch', optimize: str = 'SGD', lr : float = 0.1, epochs : int = 100):
     X, y, _ = load_uci(
         "wine-quality",
         "winequality-red.csv",
@@ -32,13 +23,11 @@ def choose_model(target : str = "" , model: str = 'torch', optimize: str = 'SGD'
     X_train = scaler.fit_transform(X_train)
     X_test = scaler.transform(X_test)
 
-    res_model = None
-
     if model == 'torch':
-        res_model = pytorch_model(X_train, X_test, y_train, y_test, optimize)
+        res_model = pytorch_model(X_train, X_test, y_train, y_test, optimize, lr, epochs)
+        return lambda X_input: res_model(X_input), scaler
     elif model == 'tensorflow':
-        res_model = tensorflow_manual_train(X_train, X_test, y_train, y_test, optimize)
+        res_model = tensorflow_manual_train(X_train, X_test, y_train, y_test, optimize, lr, epochs)
+        return lambda X_input: res_model(X_input), scaler
 
-
-    return res_model, choose_scaler(model, X_train)
 
